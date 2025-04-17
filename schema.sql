@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS lines;
+
+CREATE TABLE lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_x REAL NOT NULL,
+    start_y REAL NOT NULL,
+    end_x REAL NOT NULL,
+    end_y REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
