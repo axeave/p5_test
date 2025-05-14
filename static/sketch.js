@@ -1,67 +1,103 @@
+// グローバル変数
 let drawing = false;
 let previousX, previousY;
+let currentLinesBuffer = [];
+let p5Canvas;
+let sketchId; // 現在のスケッチIDを保持
 
 function setup() {
-  createCanvas(400, 300);
-  background(240);
+    p5Canvas = createCanvas(600, 400);
+    let canvasElement = document.querySelector('canvas');
+    let controlsDiv = document.getElementById('controls');
+    if (controlsDiv && canvasElement) {
+        controlsDiv.insertAdjacentElement('afterend', canvasElement);
+    }
+
+    background(230);
+    stroke(0);
+    strokeWeight(2);
+
+    p5Canvas.mousePressed(startDrawing); // マウスが押された時の処理
+    p5Canvas.mouseReleased(endDrawing);   // マウスが離された時の処理
 }
 
-function mousePressed() {
-  drawing = true;
-  previousX = mouseX;
-  previousY = mouseY;
+async function startDrawing() {
+    if (mouseX > 0 && mouseX < width && mouseY > 0 && mouseY < height) {
+        drawing = true;
+        previousX = mouseX;
+        previousY = mouseY;
+
+        // 新しいスケッチを作成し、sketchId を取得
+        const sketchResponse = await fetch('/api/create_sketch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!sketchResponse.ok) {
+            const errorResult = await sketchResponse.json();
+            throw new Error(`スケッチの作成に失敗しました: ${errorResult.error || sketchResponse.status}`);
+        }
+
+        const sketchResult = await sketchResponse.json();
+        sketchId = sketchResult.sketch_id;
+        console.log('Sketch created with ID:', sketchId);
+    }
 }
 
-function mouseReleased() {
-  drawing = false;
+async function endDrawing() {
+    drawing = false;
+    if (currentLinesBuffer.length > 0) {
+        await saveSketch(); // 線が描かれていれば保存
+    }
 }
+
 
 function mouseDragged() {
-  if (drawing) {
-    fill(0);
-    line(previousX, previousY, mouseX, mouseY);
-    sendLineData(previousX, previousY, mouseX, mouseY);
-    previousX = mouseX;
-    previousY = mouseY;
-  }
-}
-
-async function sendLineData(startX, startY, endX, endY) {
-  const data = { start_x: startX, start_y: startY, end_x: endX, end_y: endY };
-  try {
-    const response = await fetch('/api/save_line', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      console.error('Failed to save line:', response.status);
-    } else {
-      const result = await response.json();
-      console.log('Line saved:', result.message);
+    if (drawing) {
+        const currentX = mouseX;
+        const currentY = mouseY;
+        line(previousX, previousY, currentX, currentY);
+        currentLinesBuffer.push({
+            start_x: previousX,
+            start_y: previousY,
+            end_x: currentX,
+            end_y: currentY,
+        });
+        previousX = currentX;
+        previousY = currentY;
     }
-  } catch (error) {
-    console.error('Error sending data:', error);
-  }
 }
 
-async function loadLines() {
-  try {
-    const response = await fetch('/api/get_lines');
-    if (response.ok) {
-      const lines = await response.json();
-      lines.forEach(lineData => {
-        stroke(100); // 保存された線の色
-        line(lineData.start_x, lineData.start_y, lineData.end_x, lineData.end_y);
-      });
-    } else {
-      console.error('Failed to load lines:', response.status);
+async function saveSketch() {
+    if (!sketchId) {
+        alert('スケッチIDがありません。描画を開始してください。');
+        return;
     }
-  } catch (error) {
-    console.error('Error loading lines:', error);
-  }
+
+    try {
+        const linesResponse = await fetch('/api/save_lines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sketch_id: sketchId, lines: currentLinesBuffer }),
+        });
+
+        if (!linesResponse.ok) {
+            const errorResult = await linesResponse.json();
+            throw new Error(`線の保存に失敗しました: ${errorResult.error || linesResponse.status}`);
+        }
+
+        const linesResult = await linesResponse.json();
+        console.log('Lines saved:', linesResult.message);
+        alert(`スケッチ (ID: ${sketchId}) が正常に保存されました！`);
+
+        currentLinesBuffer = [];
+        background(230);
+        window.location.href = '/log'; // ログページへリダイレクト
+
+    } catch (error) {
+        console.error('スケッチの保存中にエラーが発生しました:', error);
+        alert(`エラーが発生しました: ${error.message}`);
+    }
 }
 
-window.onload = loadLines;
+// 以前の handleSaveSketch 関数は削除またはコメントアウト

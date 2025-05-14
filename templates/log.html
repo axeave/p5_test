@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>スケッチログ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .sketch-container {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 10px;
+        }
+        .sketch-info {
+            font-size: 0.8em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>スケッチログ</h1>
+    <div id="sketches-container">
+        </div>
+    <script src="{{ url_for('static', filename='log_sketch.js') }}"></script>
+</body>
+</html>

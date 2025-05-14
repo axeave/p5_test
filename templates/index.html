@@ -2,15 +2,23 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <title>Drawing and Saving Lines</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <title>Drawing and Saving Sketch</title> <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <style>
-    body { margin: 0; }
-    canvas { display: block; }
+    body { margin: 20px; font-family: sans-serif; }
+    canvas { display: block; margin-bottom: 10px; border: 1px solid #ccc; }
+    button { padding: 10px 15px; margin-right: 10px; font-size: 16px; cursor: pointer; }
+    a { font-size: 16px; }
+    #controls { margin-bottom: 20px; }
   </style>
   <script src="{{ url_for('static', filename='sketch.js') }}"></script>
 </head>
 <body>
-  <h1>Click and Drag to Draw Lines</h1>
-</body>
+  <h1>スケッチを描いて保存</h1>
+
+  <div id="controls">
+    <button id="saveSketchButton">現在のスケッチを保存</button>
+    <a href="{{ url_for('log_page') }}">スケッチログを見る</a>
+  </div>
+
+  </body>
 </html>
