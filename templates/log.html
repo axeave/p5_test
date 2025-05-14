@@ -22,5 +22,20 @@
     <div id="sketches-container">
         </div>
     <script src="{{ url_for('static', filename='log_sketch.js') }}"></script>
+    <script>
+        // URLからsketch_idを取得する関数
+        function getSketchIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return parseInt(urlParams.get('id'), 10); // parseIntで数値に変換
+        }
+
+        const initialSketchId = getSketchIdFromUrl();
+        if (initialSketchId) {
+            // スクリプト内で初期化
+            displaySurroundingSketches(initialSketchId);
+        } else {
+            console.error('No sketch ID provided in the URL.');
+        }
+    </script>
 </body>
 </html>

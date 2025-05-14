@@ -92,7 +92,7 @@ async function saveSketch() {
 
         currentLinesBuffer = [];
         background(230);
-        window.location.href = '/log'; // ログページへリダイレクト
+        window.location.href = ''; 
 
     } catch (error) {
         console.error('スケッチの保存中にエラーが発生しました:', error);
