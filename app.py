@@ -1,10 +1,13 @@
 import sqlite3
 from flask import Flask, render_template, request, jsonify
-from collections import defaultdict
+from flask_socketio import SocketIO, emit  # 追加
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'secret!'  # セッション管理に必要な設定
+socketio = SocketIO(app)  # SocketIOインスタンスを作成
 DATABASE = 'lines.db'
 
+# --- データベース接続関連の関数 (変更なし) ---
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -40,6 +43,11 @@ def log_page():
     """スケッチのログページを表示します。"""
     return render_template('log.html') # 新しいHTMLファイル
 
+@app.route('/screen')
+def screen_page():
+    """リアルタイム描画ページを表示します。"""
+    return render_template('screen.html')  # 新しいHTMLファイル
+
 @app.route('/api/create_sketch', methods=['POST'])
 def create_sketch():
     """新しいスケッチを作成し、そのIDを返します。"""
@@ -56,9 +64,9 @@ def create_sketch():
         close_db(conn)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/save_lines', methods=['POST']) # エンドポイント名を複数形に変更 (save_line -> save_lines)
+@app.route('/api/save_lines', methods=['POST'])
 def save_lines():
-    """複数の線データを指定されたスケッチIDで保存します。"""
+    """複数の線データを指定されたスケッチIDで保存し、WebSocketで通知します。"""
     data = request.get_json()
     if not data or 'sketch_id' not in data or 'lines' not in data or not isinstance(data['lines'], list):
         return jsonify({'error': 'Invalid data. sketch_id and a list of lines are required.'}), 400
@@ -69,7 +77,7 @@ def save_lines():
     conn = get_db()
     cursor = conn.cursor()
     try:
-        # まず、指定されたsketch_idが存在するか確認 (任意ですが、より堅牢になります)
+        # まず、指定されたsketch_idが存在するか確認
         cursor.execute("SELECT id FROM sketches WHERE id = ?", (sketch_id,))
         sketch = cursor.fetchone()
         if not sketch:
@@ -87,6 +95,10 @@ def save_lines():
                 (sketch_id, line['start_x'], line['start_y'], line['end_x'], line['end_y'])
             )
         conn.commit()
+
+        # WebSocketでクライアントに通知 (sketch_idとlines_dataを送信)
+        socketio.emit('new_sketch', {'sketch_id': sketch_id, 'lines': lines_data}, namespace='/screen')
+
         close_db(conn)
         return jsonify({'message': f'{len(lines_data)} lines saved successfully for sketch {sketch_id}'}), 201
     except sqlite3.Error as e:
@@ -129,155 +141,12 @@ def get_sketch_lines(sketch_id):
         close_db(conn)
         return jsonify({'error': str(e)}), 500
 
+# WebSocketイベントハンドラ
+@socketio.on('connect', namespace='/screen')
+def test_connect():
+    print('Client connected')
 
-@app.route('/api/get_all_sketch_lines', methods=['GET'])
-def get_all_sketch_lines():
-    """保存されている全てのスケッチの線画データを取得し、各スケッチの開始点と終了点を返す。"""
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            SELECT 
-                l.start_x, l.start_y, l.end_x, l.end_y, 
-                s.created_at, s.id as sketch_id,
-                FIRST_VALUE(l.start_x) OVER (PARTITION BY s.id ORDER BY l.id ASC) as sketch_start_x,
-                FIRST_VALUE(l.start_y) OVER (PARTITION BY s.id ORDER BY l.id ASC) as sketch_start_y,
-                LAST_VALUE(l.end_x) OVER (PARTITION BY s.id ORDER BY l.id DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as sketch_end_x,
-                LAST_VALUE(l.end_y) OVER (PARTITION BY s.id ORDER BY l.id DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as sketch_end_y
-            FROM lines l
-            JOIN sketches s ON l.sketch_id = s.id
-            ORDER BY s.created_at, l.id
-        """)
-        lines = cursor.fetchall()
-        close_db(conn)
-        return jsonify([dict(row) for row in lines])
-    except sqlite3.Error as e:
-        close_db(conn)
-        return jsonify({'error': str(e)}), 500
-
-
-# 以前の /api/get_lines と /api/save_line は新しいエンドポイントに役割を譲るため削除またはコメントアウトします。
-# もし古いAPIを何らかの理由で残したい場合はその旨お伝えください。
-# 今回は、新しい機能に完全に移行するため、古いAPIは不要と判断します。
-
-@app.route('/api/get_latest_sketch_id', methods=['GET'])
-def get_latest_sketch_id():
-    """最も新しいスケッチのIDを取得します。"""
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT id FROM sketches ORDER BY created_at DESC LIMIT 1")
-        latest_sketch = cursor.fetchone()
-        if latest_sketch:
-            latest_id = latest_sketch['id']
-            close_db(conn)
-            return jsonify({'latest_sketch_id': latest_id}), 200
-        else:
-            close_db(conn)
-            return jsonify({'latest_sketch_id': None}), 200
-    except sqlite3.Error as e:
-        close_db(conn)
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_surrounding_sketches/<int:center_sketch_id>', methods=['GET'])
-def get_surrounding_sketches(center_sketch_id):
-    """指定されたスケッチIDを中心とした前後のスケッチデータを取得します。"""
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            SELECT 
-                l.start_x, l.start_y, l.end_x, l.end_y, 
-                s.created_at, s.id as sketch_id,
-                FIRST_VALUE(l.start_x) OVER (PARTITION BY s.id ORDER BY l.id ASC) as sketch_start_x,
-                FIRST_VALUE(l.start_y) OVER (PARTITION BY s.id ORDER BY l.id ASC) as sketch_start_y,
-                LAST_VALUE(l.end_x) OVER (PARTITION BY s.id ORDER BY l.id DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as sketch_end_x,
-                LAST_VALUE(l.end_y) OVER (PARTITION BY s.id ORDER BY l.id DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as sketch_end_y
-            FROM lines l
-            JOIN sketches s ON l.sketch_id = s.id
-            WHERE s.created_at BETWEEN (
-                SELECT datetime(created_at, '-5 seconds') FROM sketches WHERE id = ?
-            ) AND (
-                SELECT datetime(created_at, '+5 seconds') FROM sketches WHERE id = ?
-            )
-            ORDER BY s.created_at, l.id
-        """, (center_sketch_id, center_sketch_id))  # 前後5秒の範囲で取得 (調整可能)
-        lines = cursor.fetchall()
-        close_db(conn)
-        return jsonify([dict(row) for row in lines])
-    except sqlite3.Error as e:
-        close_db(conn)
-        return jsonify({'error': str(e)}), 500
-
-
-
-@app.route('/api/get_surrounding_sketch_lines/<int:sketch_id>', methods=['GET'])
-def get_surrounding_sketch_lines(sketch_id):
-    """
-    指定されたsketch_idを中心とした前後5件のスケッチの線画データを取得し、Python側で処理します。
-    """
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        # まず、中心となるスケッチのcreated_atを取得
-        cursor.execute("SELECT created_at FROM sketches WHERE id = ?", (sketch_id,))
-        result = cursor.fetchone()
-        if not result:
-            close_db(conn)
-            return jsonify({'error': f'Sketch with id {sketch_id} not found.'}), 404
-        target_created_at = dict(result)['created_at']
-
-        # 前後のスケッチIDを取得
-        cursor.execute("""
-            SELECT id FROM sketches 
-            WHERE created_at <= ? ORDER BY created_at DESC LIMIT 6
-        """, (target_created_at,))
-        prev_sketch_ids = [row['id'] for row in cursor.fetchall()]
-
-        cursor.execute("""
-            SELECT id FROM sketches 
-            WHERE created_at > ? ORDER BY created_at ASC LIMIT 5
-        """, (target_created_at,))
-        next_sketch_ids = [row['id'] for row in cursor.fetchall()]
-
-        all_sketch_ids = list(dict.fromkeys(prev_sketch_ids + next_sketch_ids))  # 重複を削除し、順序を保持
-
-        # 全ての線データを取得
-        cursor.execute("""
-            SELECT l.*, s.created_at FROM lines l
-            JOIN sketches s ON l.sketch_id = s.id
-            WHERE l.sketch_id IN ({})
-            ORDER BY s.created_at, l.id
-        """.format(','.join('?' * len(all_sketch_ids))), all_sketch_ids)
-        lines = [dict(row) for row in cursor.fetchall()]
-
-        # 各スケッチの開始点と終了点を計算
-        sketch_lines = defaultdict(list)
-        for line in lines:
-            sketch_lines[line['sketch_id']].append(line)
-
-        processed_lines = []
-        for sketch_id in all_sketch_ids:
-            if sketch_id in sketch_lines:
-                sketch_lines_for_id = sketch_lines[sketch_id]
-                if sketch_lines_for_id:
-                    first_line = sketch_lines_for_id[0]
-                    last_line = sketch_lines_for_id[-1]
-                    for line in sketch_lines_for_id:
-                        line['sketch_start_x'] = first_line['start_x']
-                        line['sketch_start_y'] = first_line['start_y']
-                        line['sketch_end_x'] = last_line['end_x']
-                        line['sketch_end_y'] = last_line['end_y']
-                        processed_lines.append(line)
-
-        close_db(conn)
-        return jsonify(processed_lines)
-
-    except sqlite3.Error as e:
-        close_db(conn)
-        return jsonify({'error': str(e)}), 500
-    
 if __name__ == '__main__':
     # staticフォルダの場所を明示的に指定 (通常は自動で認識されますが、念のため)
     # app.static_folder = 'static'
-    app.run(debug=True)
+    socketio.run(app, debug=True) # app.run() の代わりに socketio.run() を使用

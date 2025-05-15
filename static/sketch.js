@@ -88,7 +88,6 @@ async function saveSketch() {
 
         const linesResult = await linesResponse.json();
         console.log('Lines saved:', linesResult.message);
-        alert(`スケッチ (ID: ${sketchId}) が正常に保存されました！`);
 
         currentLinesBuffer = [];
         background(230);
