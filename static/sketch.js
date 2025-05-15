@@ -48,7 +48,7 @@ class Sketch {
 
     async endDrawing() {
         this.drawing = false;
-        if (this.currentLinesBuffer.length > 0) {
+        if (this.currentLinesBuffer.length > 0 && this.sketchId) { // sketchId がある場合のみ保存
             await this.saveSketch();
         }
     }
@@ -92,8 +92,7 @@ class Sketch {
 
             this.currentLinesBuffer = [];
             background(230);
-            window.location.href = '';
-
+            // window.location.href = ''; // ページリロードを削除
         } catch (error) {
             console.error('スケッチの保存中にエラーが発生しました:', error);
             alert(`エラーが発生しました: ${error.message}`);
@@ -101,14 +100,14 @@ class Sketch {
     }
 }
 
-let mySketch; // グローバルスコープで宣言
+let mySketch;
 
 function setup() {
-    mySketch = new Sketch(); // setup 関数内で初期化
+    mySketch = new Sketch();
 }
 
 function draw() {
-    if (mySketch) { // mySketch が初期化されているか確認
+    if (mySketch) {
         mySketch.mouseDragged();
     }
 }
