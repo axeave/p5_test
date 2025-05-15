@@ -17,6 +17,7 @@ class Sketch {
         stroke(0);
         strokeWeight(2);
 
+        // イベントリスナーをバインド
         this.p5Canvas.mousePressed(this.startDrawing.bind(this));
         this.p5Canvas.mouseReleased(this.endDrawing.bind(this));
     }
@@ -100,8 +101,14 @@ class Sketch {
     }
 }
 
-const mySketch = new Sketch();
-function setup() {} // p5.js の setup 関数は空にする (クラス内で処理)
+let mySketch; // グローバルスコープで宣言
+
+function setup() {
+    mySketch = new Sketch(); // setup 関数内で初期化
+}
+
 function draw() {
-    mySketch.mouseDragged();
+    if (mySketch) { // mySketch が初期化されているか確認
+        mySketch.mouseDragged();
+    }
 }
